@@ -1,0 +1,85 @@
+/* Styles for Category Navigation */
+.category-nav {
+  background-color: white;
+  padding: 15px 0;
+  margin: 0px 170px 30px 150px;
+  box-shadow: 0 5px 15px rgba(249, 111, 58, 0.1);
+  border-radius: 16px;
+  position: sticky;
+  top: 70px; /* Điều chỉnh vị trí cách top, phụ thuộc vào chiều cao của header */
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+.category-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  overflow-x: auto;
+}
+
+.category-list {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 25px;
+  flex-wrap: nowrap;
+}
+
+.category-item {
+  flex-shrink: 0;
+}
+
+.category-button {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  border-radius: 20px;
+  color: #333;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.category-button:hover {
+  background-color: #fff2ec;
+  color: #f96f3a;
+  transform: translateY(-2px);
+}
+
+.category-button.active {
+  background: linear-gradient(90deg, #f96f3a, #ff9966);
+  color: white;
+  box-shadow: 0 4px 10px rgba(249, 111, 58, 0.2);
+}
+
+/* Tạo hiệu ứng gradient line phía dưới */
+.category-nav::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 5%;
+  right: 5%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #f96f3a, transparent);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .category-container {
+    padding: 0 10px;
+  }
+  
+  .category-list {
+    gap: 8px;
+  }
+  
+  .category-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}

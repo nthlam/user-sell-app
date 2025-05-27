@@ -1,0 +1,986 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
+import axios from 'axios';
+import { fetchProductById } from '../redux/slices/productSlice';
+import '../assets/styles/ProductDetailPage.css';
+
+// Import commitment icons
+import camket1 from '../assets/images/camket1.jpeg';
+import camket2 from '../assets/images/camket2.jpeg';
+import camket3 from '../assets/images/camket3.jpeg';
+import camket4 from '../assets/images/camket4.jpeg';
+import newCusPromo from '../assets/images/new_cus.jpeg';
+
+// API URL
+const API_URL = 'https://phone-selling-app-mw21.onrender.com';
+
+const ProductDetailPage = () => {
+  const { productId } = useParams();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { currentProduct, loading, error } = useSelector((state) => state.products);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [quantity, setQuantity] = useState(1);
+  const [activeTab, setActiveTab] = useState('specs');
+  const [selectedVariant, setSelectedVariant] = useState(null);
+  const [variantImages, setVariantImages] = useState([]);
+  const [variants, setVariants] = useState([]);
+  const [isLoadingVariants, setIsLoadingVariants] = useState(false);
+  const [variantError, setVariantError] = useState(null);
+  
+  // Cart state
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [cartMessage, setCartMessage] = useState(null);
+  const [cartError, setCartError] = useState(null);
+  const [showCartModal, setShowCartModal] = useState(false);
+  
+  // Reviews data
+  const [reviews, setReviews] = useState([]);
+  const [reviewsMeta, setReviewsMeta] = useState({
+    totalElements: 0,
+    totalPages: 0,
+    currentPage: 1
+  });
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState(null);
+  const [reviewFilter, setReviewFilter] = useState(null); // filter by rating (1-5)
+  const [averageRating, setAverageRating] = useState(0);
+  
+  // Countdown timer
+  const [countdown, setCountdown] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0
+  });
+  
+  // Cập nhật đồng hồ đếm ngược
+  useEffect(() => {
+    // Mặc định là 7 ngày từ hiện tại
+    const defaultEndDate = new Date();
+    defaultEndDate.setDate(defaultEndDate.getDate() + 7);
+    
+    // Lấy ngày hết hạn từ khuyến mãi đầu tiên hoặc dùng mặc định
+    let endDate;
+    if (currentProduct && currentProduct.promotions && currentProduct.promotions.length > 0 && currentProduct.promotions[0].endDate) {
+      endDate = new Date(currentProduct.promotions[0].endDate);
+    } else {
+      endDate = defaultEndDate;
+    }
+    
+    const updateCountdown = () => {
+      const now = new Date();
+      const timeDiff = endDate - now;
+      
+      if (timeDiff <= 0) {
+        // Voucher đã hết hạn
+        setCountdown({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        return;
+      }
+      
+      const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+      
+      setCountdown({ days, hours, minutes, seconds });
+    };
+    
+    // Cập nhật ngay lập tức và sau đó mỗi giây
+    updateCountdown();
+    const intervalId = setInterval(updateCountdown, 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [currentProduct]);
+  
+  // Sold count
+  const [soldCount, setSoldCount] = useState(0);
+  
+  // State cho modal chi tiết khuyến mãi
+  const [selectedPromotion, setSelectedPromotion] = useState(null);
+  const [showPromotionModal, setShowPromotionModal] = useState(false);
+  const [loadingPromotion, setLoadingPromotion] = useState(false);
+  const [promotionError, setPromotionError] = useState(null);
+
+  // Fetch product detail
+  useEffect(() => {
+    dispatch(fetchProductById(productId));
+    // Scroll to top when component mounts
+    window.scrollTo(0, 0);
+  }, [dispatch, productId]);
+  
+  // Fetch product variants
+  useEffect(() => {
+    const fetchVariants = async () => {
+      if (!productId) return;
+      
+      setIsLoadingVariants(true);
+      try {
+        const response = await axios.get(`${API_URL}/api/v1/variant/product/${productId}`);
+        if (response.data && response.data.data) {
+          // Convert to array if it's a single object
+          const variantsData = Array.isArray(response.data.data) ? response.data.data : [response.data.data];
+          setVariants(variantsData);
+          
+          // Set default selected variant
+          if (variantsData.length > 0) {
+            setSelectedVariant(variantsData[0]);
+            
+            // Set variant images
+            if (variantsData[0].images && variantsData[0].images.length > 0) {
+              setVariantImages(variantsData[0].images);
+            }
+          }
+          
+          // Get total sold count from first variant
+          if (variantsData.length > 0 && variantsData[0].inventory) {
+            setSoldCount(variantsData[0].inventory.sold || 0);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching variants:', error);
+        setVariantError('Không thể tải biến thể sản phẩm');
+      } finally {
+        setIsLoadingVariants(false);
+      }
+    };
+    
+    fetchVariants();
+  }, [productId]);
+  
+  // Fetch variant details when a variant is selected
+  useEffect(() => {
+    const fetchVariantDetails = async () => {
+      if (!selectedVariant || !selectedVariant.id) return;
+      
+      try {
+        const response = await axios.get(`${API_URL}/api/v1/variant/${selectedVariant.id}`);
+        if (response.data && response.data.data) {
+          const variantData = response.data.data;
+          
+          // Update variant images if available
+          if (variantData.images && variantData.images.length > 0) {
+            setVariantImages(variantData.images);
+          }
+          
+          // Update inventory data
+          if (variantData.inventory) {
+            // Update the selected variant with inventory data
+            setSelectedVariant(prev => ({
+              ...prev,
+              inventory: variantData.inventory
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching variant details:', error);
+      }
+    };
+    
+    fetchVariantDetails();
+  }, [selectedVariant?.id]);
+  
+  // Fetch product reviews
+  const fetchReviews = useCallback(async (page = 1, rating = null) => {
+    if (!productId) return;
+    
+    setReviewsLoading(true);
+    try {
+      let url = `${API_URL}/api/v1/product/${productId}/review?page=${page}&size=10`;
+      if (rating) {
+        url += `&rating=${rating}`;
+      }
+      
+      const response = await axios.get(url);
+      if (response.data && response.data.data) {
+        const reviewsData = response.data.data;
+        setReviews(reviewsData.content || []);
+        setReviewsMeta({
+          totalElements: reviewsData.totalElements || 0,
+          totalPages: reviewsData.totalPages || 0,
+          currentPage: page
+        });
+        
+        // Calculate average rating
+        if (reviewsData.content && reviewsData.content.length > 0) {
+          const totalRating = reviewsData.content.reduce((sum, review) => sum + (review.rating || 0), 0);
+          const avgRating = totalRating / reviewsData.content.length;
+          setAverageRating(avgRating);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+      setReviewsError('Không thể tải đánh giá sản phẩm');
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, [productId]);
+  
+  // Load reviews when active tab changes to reviews
+  useEffect(() => {
+    if (activeTab === 'reviews') {
+      fetchReviews(1, reviewFilter);
+    }
+  }, [activeTab, fetchReviews, reviewFilter]);
+
+  if (loading) {
+    return <div className="loading-container"><div className="loading">Đang tải thông tin sản phẩm...</div></div>;
+  }
+
+  if (error) {
+    return <div className="error-container"><div className="error">Có lỗi xảy ra: {error}</div></div>;
+  }
+
+  if (!currentProduct) {
+    return <div className="error-container"><div className="error">Không tìm thấy sản phẩm</div></div>;
+  }
+
+  // Xử lý hiển thị hình ảnh từ base64
+  const renderProductImage = (image) => {
+    if (image && image.base64) {
+      return `data:image/jpeg;base64,${image.base64}`;
+    } else if (image && typeof image === 'string') {
+      return image;
+    } else {
+      return 'https://via.placeholder.com/500x500?text=No+Image';
+    }
+  };
+  
+  // Get image array for display
+  const getDisplayImages = () => {
+    // Tạo mảng chứa ảnh
+    let images = [];
+    
+    // Thêm ảnh biến thể nếu có
+    if (variantImages && variantImages.length > 0) {
+      const variantImgs = variantImages.map(img => ({
+        id: img.id || `variant-${Math.random().toString()}`,
+        src: renderProductImage(img),
+        isVariant: true
+      }));
+      images = [...images, ...variantImgs];
+    }
+    
+    // Luôn thêm 3 ảnh sản phẩm (giống nhau)
+    const productImageSrc = currentProduct && currentProduct.image ? renderProductImage(currentProduct.image) : 'https://via.placeholder.com/500x500?text=No+Image';
+    const productImgs = [
+      { id: 'product-1', src: productImageSrc, isProduct: true },
+      { id: 'product-2', src: productImageSrc, isProduct: true },
+      { id: 'product-3', src: productImageSrc, isProduct: true }
+    ];
+    images = [...images, ...productImgs];
+    
+    return images;
+  };
+  
+  // Get current displayed image
+  const getCurrentImage = () => {
+    const images = getDisplayImages();
+    return images.length > 0 ? images[Math.min(activeImageIndex, images.length - 1)].src : 'https://via.placeholder.com/500x500?text=No+Image';
+  };
+  
+  // Handle thumbnail click
+  const handleThumbnailClick = (index) => {
+    setActiveImageIndex(index);
+  };
+  
+  // Handle variant selection
+  const handleVariantSelect = (variant) => {
+    setSelectedVariant(variant);
+    // Reset active image index when changing variant
+    setActiveImageIndex(0);
+  };
+  
+  // Handle review filter change
+  const handleReviewFilterChange = (rating) => {
+    setReviewFilter(rating === reviewFilter ? null : rating);
+    fetchReviews(1, rating === reviewFilter ? null : rating);
+  };
+  
+  // Kiểm tra đăng nhập
+  const checkLogin = () => {
+    const token = localStorage.getItem('token');
+    return !!token;
+  };
+  
+  // Thêm vào giỏ hàng
+  const addToCart = async () => {
+    if (!selectedVariant) {
+      setCartError('Vui lòng chọn biến thể sản phẩm');
+      return;
+    }
+    
+    // Kiểm tra đăng nhập
+    if (!checkLogin()) {
+      // Lưu thông tin sản phẩm vào localStorage để có thể thêm vào giỏ sau khi đăng nhập
+      localStorage.setItem('pendingCartItem', JSON.stringify({
+        variantId: selectedVariant.id,
+        quantity: quantity
+      }));
+      
+      // Chuyển hướng đến trang đăng nhập
+      navigate('/login', { state: { returnUrl: `/product/${productId}` } });
+      return;
+    }
+    
+    // Nếu đã đăng nhập, tiến hành thêm vào giỏ
+    setAddingToCart(true);
+    setCartError(null);
+    setCartMessage(null);
+    
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(
+        `${API_URL}/api/v1/user/cart`,
+        {
+          variantId: selectedVariant.id,
+          quantity: quantity
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.data) {
+        setCartMessage('Đã thêm sản phẩm vào giỏ hàng!');
+        setShowCartModal(true);
+      }
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      setCartError(error.response?.data?.message || 'Không thể thêm vào giỏ hàng');
+    } finally {
+      setAddingToCart(false);
+    }
+  };
+  
+  // Đóng modal giỏ hàng
+  const closeCartModal = () => {
+    setShowCartModal(false);
+  };
+  
+  // Đi đến giỏ hàng
+  const goToCart = () => {
+    navigate('/cart');
+  };
+  
+  // Các hàm xử lý modal chi tiết khuyến mãi
+  
+  // Lấy chi tiết khuyến mãi
+  const fetchPromotionDetails = async (promotionId) => {
+    if (!promotionId) return;
+    
+    setLoadingPromotion(true);
+    setPromotionError(null);
+    
+    try {
+      const response = await axios.get(`${API_URL}/api/v1/promotion/${promotionId}`);
+      if (response.data && response.data.data) {
+        setSelectedPromotion(response.data.data);
+        setShowPromotionModal(true);
+      }
+    } catch (error) {
+      console.error('Error fetching promotion details:', error);
+      setPromotionError('Không thể tải thông tin khuyến mãi');
+    } finally {
+      setLoadingPromotion(false);
+    }
+  };
+  
+  // Đóng modal chi tiết khuyến mãi
+  const closePromotionModal = () => {
+    setShowPromotionModal(false);
+  };
+  
+  // Xử lý click vào khuyến mãi
+  const handlePromotionClick = (promotion) => {
+    if (promotion && promotion.id) {
+      fetchPromotionDetails(promotion.id);
+    }
+  };
+
+  // Tính giảm giá
+  const calculateDiscount = () => {
+    if (!currentProduct.basePrice || !currentProduct.price || currentProduct.basePrice <= currentProduct.price) return null;
+    const discount = Math.round(((currentProduct.basePrice - currentProduct.price) / currentProduct.basePrice) * 100);
+    return discount > 0 ? `${discount}%` : null;
+  };
+
+  // Format giá tiền
+  const formatCurrency = (price) => {
+    return price?.toLocaleString('vi-VN') + 'đ';
+  };
+
+  // Format ngày tháng
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN');
+  };
+
+  // Xử lý thêm vào giỏ hàng
+  const handleAddToCart = () => {
+    // Sẽ thêm chức năng thêm vào giỏ hàng sau
+    alert(`Đã thêm ${quantity} sản phẩm ${currentProduct.name} vào giỏ hàng!`);
+  };
+
+  return (
+    <div className="product-detail-container">
+      <div className="product-detail-breadcrumb">
+        <Link to="/">Trang chủ</Link> &gt; 
+        <Link to={`/category/${currentProduct.productLine?.category?.id}`}>{currentProduct.productLine?.category?.name}</Link> &gt; 
+        <span>{currentProduct.name}</span>
+      </div>
+
+      <div className="product-detail-header">
+        <h1 className="product-name">{currentProduct.name}</h1>
+        <div className="product-rating-summary">
+          <span className="rating">★ {averageRating > 0 ? averageRating.toFixed(1) : (currentProduct.rating?.toFixed(1) || '4.9')}</span>
+          <span className="dot-separator">•</span>
+          <span className="reviews-count">{reviewsMeta.totalElements || currentProduct.reviewsCount || 0} đánh giá</span>
+          <span className="dot-separator">•</span>
+          <span className="sold-count">Đã bán {soldCount}</span>
+        </div>
+      </div>
+
+      <div className="product-detail-main">
+        {/* Cột bên trái */}
+        <div className="product-detail-left">
+          {/* Phần hiển thị ảnh sản phẩm */}
+          <div className="product-images-container">
+            <div className="product-main-image">
+              <img 
+                src={getCurrentImage()} 
+                alt={currentProduct.name} 
+                className="product-image-main"
+              />
+            </div>
+            <div className="product-thumbnails">
+              {getDisplayImages().map((image, index) => (
+                <div 
+                  key={image.id}
+                  className={`thumbnail ${index === activeImageIndex ? 'active' : ''} ${image.isProduct ? 'product-thumbnail' : 'variant-thumbnail'}`}
+                  onClick={() => handleThumbnailClick(index)}
+                >
+                  <img src={image.src} alt={`Thumbnail ${index + 1}`} />
+                  {image.isProduct && <span className="thumbnail-label">Sản phẩm</span>}
+                  {image.isVariant && <span className="thumbnail-label">Biến thể</span>}
+                </div>
+              ))}
+            
+            </div>
+          </div>
+
+          {/* Phần cam kết của shop */}
+          <div className="shop-commitment">
+            <h3>ShopShop cam kết</h3>
+            <div className="commitment-items">
+              <div className="commitment-item">
+                <img src={camket1} alt="Sản phẩm mới" />
+                <p>Sản phẩm mới (Cần thanh toán trước khi mở hộp).</p>
+              </div>
+              <div className="commitment-item">
+                <img src={camket2} alt="Bộ sản phẩm" />
+                <p>Bộ sản phẩm gồm: Hộp, Sách hướng dẫn, Cáp, Cây lấy sim</p>
+              </div>
+              <div className="commitment-item">
+                <img src={camket3} alt="Hư gì đổi nấy" />
+                <p>Hư gì đổi nấy 12 tháng tại  8386 siêu thị toàn quốc (miễn phí tháng đầu)</p>
+              </div>
+              <div className="commitment-item">
+                <img src={camket4} alt="Bảo hành" />
+                <p>Bảo hành chính hãng điện thoại 1 năm tại các trung tâm bảo hành hãng</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Tab thông số kỹ thuật hoặc đánh giá */}
+          <div className="product-tabs">
+            <div className="tab-headers">
+              <div 
+                className={`tab-header ${activeTab === 'specs' ? 'active' : ''}`}
+                onClick={() => setActiveTab('specs')}
+              >
+                Thông số kỹ thuật
+              </div>
+              <div 
+                className={`tab-header ${activeTab === 'reviews' ? 'active' : ''}`}
+                onClick={() => setActiveTab('reviews')}
+              >
+                Đánh giá
+              </div>
+            </div>
+
+            <div className="tab-content">
+              {activeTab === 'specs' && (
+                <div className="specs-content">
+                  <table className="specs-table">
+                    <tbody>
+                      {currentProduct.attributes && currentProduct.attributes.map((attr) => (
+                        <tr key={attr.id}>
+                          <td className="spec-name">{attr.attribute.name || '...'}</td>
+                          <td className="spec-value">{attr.value || '...'}</td>
+                        </tr>
+                      ))}
+                      {(!currentProduct.attributes || currentProduct.attributes.length === 0) && (
+                        <>
+                          <tr>
+                            <td className="spec-name">Mã sản phẩm</td>
+                            <td className="spec-value">{currentProduct.code || '...'}</td>
+                          </tr>
+                          <tr>
+                            <td className="spec-name">Tên sản phẩm</td>
+                            <td className="spec-value">{currentProduct.name || '...'}</td>
+                          </tr>
+                          <tr>
+                            <td className="spec-name">Thương hiệu</td>
+                            <td className="spec-value">{currentProduct.productLine?.brand?.name || '...'}</td>
+                          </tr>
+                          <tr>
+                            <td className="spec-name">Danh mục</td>
+                            <td className="spec-value">{currentProduct.productLine?.category?.name || '...'}</td>
+                          </tr>
+                          <tr>
+                            <td className="spec-name">Đánh giá</td>
+                            <td className="spec-value">{currentProduct.rating ? `${currentProduct.rating.toFixed(1)}/5 (${currentProduct.reviewsCount || 0} đánh giá)` : '...'}</td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activeTab === 'reviews' && (
+                <div className="reviews-content">
+                  {reviewsLoading ? (
+                    <div className="reviews-loading">Đang tải đánh giá...</div>
+                  ) : reviewsError ? (
+                    <div className="reviews-error">{reviewsError}</div>
+                  ) : (
+                    <>
+                      <div className="review-summary">
+                        <div className="average-rating">
+                          <div className="rating-number">{averageRating.toFixed(1)}</div>
+                          <div className="rating-stars">
+                            {[1, 2, 3, 4, 5].map(star => (
+                              <span key={star} className={star <= Math.round(averageRating) ? 'star filled' : 'star'}>★</span>
+                            ))}
+                          </div>
+                          <div className="total-reviews">{reviewsMeta.totalElements} đánh giá</div>
+                        </div>
+                        
+
+
+                        <div className="rating-filters">
+                          <div className="filter-title">Lọc theo:</div>
+                          <div className="rating-filter-buttons">
+                            {[5, 4, 3, 2, 1].map(rating => (
+                              <button 
+                                key={rating}
+                                className={`rating-filter-btn ${reviewFilter === rating ? 'active' : ''}`}
+                                onClick={() => handleReviewFilterChange(rating)}
+                              >
+                                {rating} ★
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="reviews-list">
+                        {reviews.length > 0 ? (
+                          <>
+                            {reviews.map(review => (
+                              <div key={review.id} className="review-item">
+                                <div className="review-header">
+                                  <div className="reviewer-info">
+                                    <div className="reviewer-name">{review.user?.fullName || 'Người dùng ẩn danh'}</div>
+                                    <div className="review-date">{new Date(review.createdAt).toLocaleDateString('vi-VN')}</div>
+                                  </div>
+                                  <div className="review-rating">
+                                    {[1, 2, 3, 4, 5].map(star => (
+                                      <span key={star} className={star <= review.rating ? 'star filled' : 'star'}>★</span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="review-content">{review.content}</div>
+                              </div>
+                            ))}
+                            
+                            {reviewsMeta.totalPages > 1 && (
+                              <div className="reviews-pagination">
+                                {reviewsMeta.currentPage > 1 && (
+                                  <button 
+                                    className="pagination-btn prev"
+                                    onClick={() => fetchReviews(reviewsMeta.currentPage - 1, reviewFilter)}
+                                  >
+                                    &lt; Trước
+                                  </button>
+                                )}
+                                
+                                <span className="pagination-info">{reviewsMeta.currentPage}/{reviewsMeta.totalPages}</span>
+                                
+                                {reviewsMeta.currentPage < reviewsMeta.totalPages && (
+                                  <button 
+                                    className="pagination-btn next"
+                                    onClick={() => fetchReviews(reviewsMeta.currentPage + 1, reviewFilter)}
+                                  >
+                                    Tiếp &gt;
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="no-reviews">
+                            {reviewFilter ? `Không có đánh giá nào cho ${reviewFilter} sao` : 'Chưa có đánh giá nào'}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Cột bên phải */}
+        <div className="product-detail-right">
+          {/* Banner khuyến mãi khách hàng mới */}
+          <div className="new-customer-promo">
+            <img src={newCusPromo} alt="Khuyến mãi khách hàng mới" className="new-customer-promo-img" />
+          </div>
+
+          {/* Các biến thể sản phẩm */}
+          <div className="product-variants">
+            <h3 className="variants-title">Lựa chọn phiên bản</h3>
+            
+            {/* Biến thể sản phẩm */}
+            <div className="variant-group">
+              <div className="variant-label">
+                <span className="variant-label-icon">✔</span>
+                <span>Chọn màu sắc</span>
+                {selectedVariant && (
+                  <span className="selected-variant">(Đã chọn: {selectedVariant.color})</span>
+                )}
+              </div>
+              
+              {isLoadingVariants ? (
+                <div className="loading-variants">
+                  <div className="loading-spinner"></div>
+                  <span>Đang tải biến thể...</span>
+                </div>
+              ) : variantError ? (
+                <div className="error-variants">{variantError}</div>
+              ) : variants.length > 0 ? (
+                <div className="variant-options">
+                  {variants.map(variant => {
+                    const isActive = selectedVariant && selectedVariant.id === variant.id;
+                    return (
+                      <button 
+                        key={variant.id}
+                        className={`variant-option ${isActive ? 'active' : ''}`}
+                        onClick={() => handleVariantSelect(variant)}
+                      >
+                        <span className="variant-name">{variant.color || 'Biến thể'}</span>
+                        {variant.inventory && (
+                          <span className="variant-inventory">
+                            Còn {variant.inventory.available || 0} sản phẩm
+                          </span>
+                        )}
+                        {isActive && <span className="variant-check">✔</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="no-variants">Không có biến thể nào</div>
+              )}
+              
+              {selectedVariant && selectedVariant.inventory && (
+                <div className="inventory-info">
+                  <span className="available-count">
+                    <i className="inventory-icon">✓</i> Còn lại: {selectedVariant.inventory.available}
+                  </span>
+                  <span className="sold-count">
+                    <i className="inventory-icon">➕</i> Đã bán: {selectedVariant.inventory.sold}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Giá và thông tin giảm giá */}
+            <div className="price-section">
+              <div className="price-location">Giá tại Hồ Chí Minh</div>
+              <div className="price-online-container">
+                <div className="price-online-tag">Online Giá Rẻ Quá</div>
+                <div className="price-online">{formatCurrency(currentProduct.price || 30590000)}</div>
+              </div>
+              <div className="price-original-container">
+                <div className="price-original">{formatCurrency(currentProduct.basePrice || 34990000)}</div>
+                <div className="price-discount">-{calculateDiscount() || '12%'}</div>
+              </div>
+              
+              
+
+              {/* Countdown timer */}
+
+
+              <div className="countdown-container">
+                <div className="countdown-label">Khuyến mãi kết thúc sau</div>
+                <div className="countdown-timer">
+                  <div className="time-unit">
+                    <div className="time-value">{countdown.days}</div>
+                    <div className="time-label">Ngày</div>
+                  </div>
+                  <div className="time-separator">:</div>
+                  <div className="time-unit">
+                    <div className="time-value">{String(countdown.hours).padStart(2, '0')}</div>
+                    <div className="time-label">Giờ</div>
+                  </div>
+                  <div className="time-separator">:</div>
+                  <div className="time-unit">
+                    <div className="time-value">{String(countdown.minutes).padStart(2, '0')}</div>
+                    <div className="time-label">Phút</div>
+                  </div>
+                  <div className="time-separator">:</div>
+                  <div className="time-unit">
+                    <div className="time-value">{String(countdown.seconds).padStart(2, '0')}</div>
+                    <div className="time-label">Giây</div>
+                  </div>
+                </div>
+                {currentProduct && currentProduct.promotions && currentProduct.promotions.length > 0 && currentProduct.promotions[0].endDate && (
+                  <div className="countdown-expiry">Hết hạn vào: {new Date(currentProduct.promotions[0].endDate).toLocaleDateString('vi-VN')}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Danh sách khuyến mãi */}
+          <div className="promotion-list">
+            <div className="promotion-title">Khuyến mãi</div>
+                {currentProduct.promotions && currentProduct.promotions.length > 0 ? (
+                  <ul className="promotion-items">
+                    {currentProduct.promotions.map((promo) => (
+                      <li className="promotion-item" key={promo.id}>
+                        <div className="promotion-dot"></div>
+                        <div 
+                          className="promotion-text"
+                          onClick={() => handlePromotionClick(promo)}
+                          title="Nhấp để xem chi tiết"
+                        >
+                          {promo.name || '...'} - Giảm {formatCurrency(promo.value) || '0đ'}
+                          {promo.startDate && promo.endDate && (
+                            <div className="promotion-period">
+                              Từ {formatDate(promo.startDate)} đến {formatDate(promo.endDate)}
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="promotion-items">
+                    <li className="promotion-item">
+                      <div className="promotion-dot"></div>
+                      <div 
+                        className="promotion-text"
+                        onClick={() => handlePromotionClick({id: 1, name: 'VNPAY', value: 3000000})}
+                        title="Nhấp để xem chi tiết"
+                      >
+                        Giảm ngay 3.000.000đ khi thanh toán qua VNPAY-QR
+                      </div>
+                    </li>
+                    <li className="promotion-item">
+                      <div className="promotion-dot"></div>
+                      <div 
+                        className="promotion-text"
+                        onClick={() => handlePromotionClick({id: 2, name: 'TRẢ GÓP', value: 0})}
+                        title="Nhấp để xem chi tiết"
+                      >
+                        Trả góp 0% với thẻ tín dụng
+                      </div>
+                    </li>
+                    <li className="promotion-item">
+                      <div className="promotion-dot"></div>
+                      <div 
+                        className="promotion-text"
+                        onClick={() => handlePromotionClick({id: 3, name: 'THU CŨ', value: 2000000})}
+                        title="Nhấp để xem chi tiết"
+                      >
+                        Thu cũ đổi mới - Trợ giá đến 2 triệu
+                      </div>
+                    </li>
+                    <li className="promotion-item">
+                      <div className="promotion-dot"></div>
+                      <div 
+                        className="promotion-text"
+                        onClick={() => handlePromotionClick({id: 4, name: 'APPLE CARE', value: 500000})}
+                        title="Nhấp để xem chi tiết"
+                      >
+                        Tặng PMH 500.000đ mua Apple Care+
+                      </div>
+                    </li>
+                  </ul>
+            )}
+          </div>
+
+          {/* Nút thêm vào giỏ hàng và mua ngay */}
+          <div className="product-actions">
+            <div className="quantity-control">
+              <button 
+                className="quantity-btn minus" 
+                onClick={() => setQuantity(prev => (prev > 1 ? prev - 1 : 1))}
+                disabled={quantity <= 1}
+              >
+                -
+              </button>
+              <input 
+                type="number" 
+                className="quantity-input" 
+                value={quantity} 
+                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+                min="1"
+              />
+              <button 
+                className="quantity-btn plus" 
+                onClick={() => setQuantity(prev => prev + 1)}
+              >
+                +
+              </button>
+            </div>
+            
+            {cartError && <div className="cart-error">{cartError}</div>}
+            
+            <button 
+              className={`add-to-cart-btn ${addingToCart ? 'loading' : ''}`}
+              onClick={addToCart}
+              disabled={addingToCart || !selectedVariant}
+            >
+              {addingToCart ? 'Đang thêm...' : 'Thêm vào giỏ'}
+            </button>
+
+            <button 
+              className="buy-now-btn" 
+              disabled={!selectedVariant}
+              onClick={addToCart}
+            >
+              Mua ngay
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal thông báo thêm vào giỏ thành công */}
+      {showCartModal && (
+        <div className="cart-modal-overlay">
+          <div className="cart-modal">
+            <div className="cart-modal-header">
+              <h3>Thêm vào giỏ hàng thành công!</h3>
+              <button className="close-modal" onClick={closeCartModal}>&times;</button>
+            </div>
+            <div className="cart-modal-body">
+              <p>{cartMessage}</p>
+              <div className="product-added-info">
+                <img 
+                  src={selectedVariant && selectedVariant.images && selectedVariant.images.length > 0 
+                    ? renderProductImage(selectedVariant.images[0]) 
+                    : (currentProduct && currentProduct.image ? renderProductImage(currentProduct.image) : '')}
+                  alt={currentProduct.name}
+                  className="cart-product-image"
+                />
+                <div className="cart-product-details">
+                  <div className="cart-product-name">{currentProduct.name}</div>
+                  <div className="cart-variant-info">
+                    Phiên bản: {selectedVariant ? selectedVariant.color : 'Mặc định'}
+                  </div>
+                  <div className="cart-quantity">Số lượng: {quantity}</div>
+                </div>
+              </div>
+            </div>
+            <div className="cart-modal-footer">
+              <button className="continue-shopping" onClick={closeCartModal}>Tiếp tục mua sắm</button>
+              <button className="go-to-cart" onClick={goToCart}>Đi đến giỏ hàng</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal hiển thị chi tiết khuyến mãi */}
+      {showPromotionModal && (
+        <div className="promotion-modal-overlay">
+          <div className="promotion-modal">
+            <div className="promotion-modal-header">
+              <h3>Chi tiết khuyến mãi</h3>
+              <button className="close-modal" onClick={closePromotionModal}>&times;</button>
+            </div>
+            
+            <div className="promotion-modal-body">
+              {loadingPromotion ? (
+                <div className="promotion-loading">Đang tải thông tin khuyến mãi...</div>
+              ) : promotionError ? (
+                <div className="promotion-error">{promotionError}</div>
+              ) : selectedPromotion ? (
+                <div className="promotion-details">
+                  <div className="promotion-detail-name">{selectedPromotion.name || 'Chương trình khuyến mãi'}</div>
+                  
+                  <div className="promotion-detail-value">
+                    <span className="detail-label">Giá trị: </span>
+                    <span className="detail-value">{formatCurrency(selectedPromotion.value)}</span>
+                  </div>
+                  
+                  {selectedPromotion.category && (
+                    <div className="promotion-detail-category">
+                      <span className="detail-label">Loại: </span>
+                      <span className="detail-value">{selectedPromotion.category.name || 'Khuyến mãi tiêu chuẩn'}</span>
+                    </div>
+                  )}
+                  
+                  {selectedPromotion.startDate && selectedPromotion.endDate && (
+                    <div className="promotion-detail-period">
+                      <div className="period-dates">
+                        <div><span className="detail-label">Ngày bắt đầu: </span>{new Date(selectedPromotion.startDate).toLocaleDateString('vi-VN')}</div>
+                        <div><span className="detail-label">Ngày kết thúc: </span>{new Date(selectedPromotion.endDate).toLocaleDateString('vi-VN')}</div>
+                      </div>
+                      
+                      <div className="promotion-status">
+                        {new Date() < new Date(selectedPromotion.endDate) 
+                          ? <span className="status-active">Đang hoạt động</span>
+                          : <span className="status-expired">Đã hết hạn</span>
+                        }
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="promotion-detail-description">
+                    <div className="detail-label">Chi tiết: </div>
+                    <div className="detail-content">
+                      {selectedPromotion.description || 
+                        `Ưu đãi giảm ${formatCurrency(selectedPromotion.value)} khi mua sản phẩm ${currentProduct.name}. Được áp dụng cho tất cả khách hàng khi mua sản phẩm tại TechShop.`
+                      }
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="no-promotion">Không có thông tin khuyến mãi</div>
+              )}
+            </div>
+            
+            <div className="promotion-modal-footer">
+              <button className="close-promotion" onClick={closePromotionModal}>Quay lại</button>
+              {selectedPromotion && (
+                <button className="apply-promotion" onClick={closePromotionModal}>Áp dụng ngay</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ProductDetailPage;
