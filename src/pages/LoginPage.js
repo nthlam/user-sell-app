@@ -5,6 +5,7 @@ import { FaCheckCircle } from "react-icons/fa";
 import "../assets/styles/loginpage.css";
 import Header from "../components/layout/Header";
 import Footer from "../components/layout/Footer";
+import TawkChat from "../components/TawkChat";
 import axios from "axios";
 
 const LoginPage = () => {
@@ -236,6 +237,7 @@ const LoginPage = () => {
         </div>
       </div>
       <Footer />
+      <TawkChat />
     </div>
   );
 };

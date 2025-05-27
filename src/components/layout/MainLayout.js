@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
+import TawkChat from '../TawkChat';
 import '../../assets/styles/MainLayout.css';
 
 const MainLayout = () => {
@@ -12,6 +13,7 @@ const MainLayout = () => {
         <Outlet />
       </main>
       <Footer />
+      <TawkChat />
     </div>
   );
 };

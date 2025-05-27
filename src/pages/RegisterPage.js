@@ -4,6 +4,7 @@ import { MdOutlineVisibility, MdOutlineVisibilityOff } from "react-icons/md";
 import "../assets/styles/registerpage.css";
 import Header from "../components/layout/Header";
 import Footer from "../components/layout/Footer";
+import TawkChat from "../components/TawkChat";
 import axios from "axios";
 
 const RegisterPage = () => {
@@ -313,6 +314,7 @@ const RegisterPage = () => {
         </div>
       </div>
       <Footer />
+      <TawkChat />
     </div>
   );
 };
