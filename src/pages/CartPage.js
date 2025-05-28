@@ -593,7 +593,7 @@ const CartPage = () => {
       setProcessingPayment(true);
 
       // Gọi API tạo link thanh toán
-      const response = await axios.get("http://localhost:4000/create_payment", {
+      const response = await axios.get("https://onlinepay.onrender.com/create_payment", {
         params: {
           amount: subTotal,
           bankCode: "", // Để trống để hiển thị tất cả ngân hàng
@@ -631,7 +631,7 @@ const CartPage = () => {
       setProcessingPayment(true);
       
       // Gọi API ZaloPay thay vì MoMo
-      const response = await axios.post("http://localhost:4000/zalo/create-order", {
+      const response = await axios.post("https://onlinepay.onrender.com/zalo/create-order", {
         amount: selectedSubTotal,
       });
       
