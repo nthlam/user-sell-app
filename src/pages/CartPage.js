@@ -592,14 +592,13 @@ const CartPage = () => {
     try {
       setProcessingPayment(true);
 
-      // Get selected product IDs
-      const selectedIds = Object.keys(selectedProducts).filter(id => selectedProducts[id]);
-
       // Gọi API tạo link thanh toán
-      const response = await axios.post("https://onlinepay.onrender.com/vnpay/create-payment", {
-        amount: selectedSubTotal,
-        orderDescription: `Thanh toan don hang ${selectedIds.join(",")}`,
-        language: "vn",
+      const response = await axios.get("https://onlinepay.onrender.com/create_payment", {
+        params: {
+          amount: subTotal,
+          bankCode: "", // Để trống để hiển thị tất cả ngân hàng
+          language: "vn",
+        },
       });
 
       if (response.data && response.data.paymentUrl) {
@@ -607,11 +606,11 @@ const CartPage = () => {
         localStorage.setItem(
           "pendingOrder",
           JSON.stringify({
-            shippingInfoId: deliveryMethod === "DELIVERY" ? selectedAddressId : null,
+            shippingInfoId:
+              deliveryMethod === "DELIVERY" ? selectedAddressId : null,
             paymentMethod: "BANK_TRANSFER",
             receiveMethod: deliveryMethod,
             note: orderNote,
-            selectedProductIds: selectedIds
           })
         );
 

@@ -82,26 +82,16 @@ const PaymentResult = () => {
         // Lấy query params từ URL
         const queryParams = new URLSearchParams(location.search);
         
-        // Kiểm tra kết quả thanh toán với onlinepay server
-        const response = await axios.get('https://onlinepay.onrender.com/vnpay/verify-payment', {
+        // Kiểm tra kết quả thanh toán
+        const response = await axios.get('https://onlinepay.onrender.com/check_payment', {
           params: Object.fromEntries(queryParams)
         });
         
-        if (response.data && response.data.success) {
-          setResult({
-            message: "Thanh toán thành công",
-            success: true,
-            data: response.data
-          });
-          
-          // Nếu thanh toán thành công, tạo đơn hàng
+        setResult(response.data);
+        
+        // Nếu thanh toán thành công, tạo đơn hàng
+        if (response.data.message === "Thanh toán thành công") {
           await createOrder();
-        } else {
-          setResult({
-            message: response.data?.message || "Thanh toán thất bại",
-            success: false,
-            data: response.data
-          });
         }
       } catch (error) {
         console.error("Lỗi khi kiểm tra thanh toán:", error);
@@ -122,7 +112,7 @@ const PaymentResult = () => {
         if (!token || !pendingOrderData) {
           throw new Error("Không tìm thấy thông tin đơn hàng hoặc phiên đăng nhập");
         }
-
+        
         // Tạo đơn hàng với thông tin thanh toán
         const orderData = {
           shippingInfoId: pendingOrderData.shippingInfoId,
@@ -131,9 +121,8 @@ const PaymentResult = () => {
           note: pendingOrderData.note,
           selectedProductIds: pendingOrderData.selectedProductIds,
           transaction: {
-            provider: "vnpay",
-            transactionId: new URLSearchParams(location.search).get("vnp_TransactionNo"),
-            amount: pendingOrderData.amount
+            provider: "zalopay",
+            transactionId: pendingOrderData.zpTransToken
           }
         };
         
@@ -153,10 +142,6 @@ const PaymentResult = () => {
         }
       } catch (error) {
         console.error("Lỗi khi tạo đơn hàng:", error);
-        setResult(prev => ({
-          ...prev,
-          message: "Thanh toán thành công nhưng không thể tạo đơn hàng. Vui lòng liên hệ hỗ trợ."
-        }));
       }
     };
     
