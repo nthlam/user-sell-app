@@ -1,24 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import { useDispatch, useSelector } from 'react-redux';
+import { fetchPromotionById, setCurrentPromotion, setShowPromotionModal } from '../redux/slices/promotionSlice';
 import '../assets/styles/PromotionSection.css';
 
 const PromotionSection = () => {
-  const [promotionData, setPromotionData] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const { currentPromotion, loading, error, showPromotionModal } = useSelector(state => state.promotions);
   const [currentIndex, setCurrentIndex] = useState(0);
   const sliderRef = useRef(null);
   const autoSlideRef = useRef(null);
 
+  // Giữ nguyên API_URL để reference trong các hàm khác nếu cần
   const API_URL = 'https://phone-selling-app-mw21.onrender.com';
 
   // Thông tin khuyến mãi và ID tương ứng
   const promotions = [
     { id: 13, image: '/assets/images/promotions/km1.png' },
     { id: 10, image: '/assets/images/promotions/km2.jpg' },
-    { id: 3, image: '/assets/images/promotions/km3.webp' },
-    { id: 9, image: '/assets/images/promotions/km4.webp' }
+    // Sử dụng placeholder cho km3 vì chưa có file
+    { id: 3, image: '/assets/images/promotions/km3.png' },
+    { id: 9, image: '/assets/images/promotions/km4.png' }
   ];
   
   
@@ -43,26 +44,17 @@ const PromotionSection = () => {
   }, [promotions.length]);
 
   // Hàm lấy thông tin khuyến mãi khi click vào ảnh
-  const handlePromotionClick = async (id) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await axios.get(`${API_URL}/api/v1/promotion/${id}`);
-      setPromotionData(response.data.data);
-      setShowModal(true);
-    } catch (err) {
-      console.error('Lỗi khi lấy thông tin khuyến mãi:', err);
-      setError('Không thể lấy thông tin khuyến mãi. Vui lòng thử lại sau.');
-    } finally {
-      setLoading(false);
-    }
+  const handlePromotionClick = (id) => {
+    // Dispatch action để lấy thông tin khuyến mãi
+    dispatch(fetchPromotionById(id));
+    // Hiển thị modal ngay lập tức
+    dispatch(setShowPromotionModal(true));
   };
 
   // Hàm đóng modal
   const closeModal = () => {
-    setShowModal(false);
-    setPromotionData(null);
+    dispatch(setShowPromotionModal(false));
+    dispatch(setCurrentPromotion(null));
   };
 
   // Format date string
@@ -147,7 +139,7 @@ const PromotionSection = () => {
       </div>
 
       {/* Modal hiển thị thông tin khuyến mãi */}
-      {showModal && (
+      {showPromotionModal && (
         <div className="promotion-modal-overlay" onClick={closeModal}>
           <div className="promotion-modal" onClick={(e) => e.stopPropagation()}>
             <button className="close-modal" onClick={closeModal}>&times;</button>
@@ -156,31 +148,31 @@ const PromotionSection = () => {
             
             {error && <div className="modal-error">{error}</div>}
             
-            {promotionData && !loading && !error && (
+            {currentPromotion && !loading && !error && (
               <div className="promotion-details">
-                <h3 className="promotion-title">{promotionData.name}</h3>
+                <h3 className="promotion-title">{currentPromotion.name}</h3>
                 
                 <div className="promotion-info">
                   <p className="promotion-value">
                     <span>Giá trị khuyến mãi:</span> 
-                    {typeof promotionData.value === 'number' 
-                      ? promotionData.value.toLocaleString('vi-VN') + (promotionData.value > 100 ? ' ₫' : '%') 
-                      : promotionData.value
+                    {typeof currentPromotion.value === 'number' 
+                      ? currentPromotion.value.toLocaleString('vi-VN') + (currentPromotion.value > 100 ? ' ₫' : '%') 
+                      : currentPromotion.value
                     }
                   </p>
                   
                   <div className="promotion-dates">
                     <p>
-                      <span>Ngày bắt đầu:</span> {formatDate(promotionData.startDate)}
+                      <span>Ngày bắt đầu:</span> {formatDate(currentPromotion.startDate)}
                     </p>
                     <p>
-                      <span>Ngày kết thúc:</span> {formatDate(promotionData.endDate)}
+                      <span>Ngày kết thúc:</span> {formatDate(currentPromotion.endDate)}
                     </p>
                   </div>
                   
-                  {promotionData.category && (
+                  {currentPromotion.category && (
                     <p className="promotion-category">
-                      <span>Áp dụng cho:</span> {promotionData.category.name}
+                      <span>Áp dụng cho:</span> {currentPromotion.category.name}
                     </p>
                   )}
                 </div>

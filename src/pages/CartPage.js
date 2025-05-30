@@ -591,17 +591,29 @@ const CartPage = () => {
   const handleVNPayPayment = async () => {
     try {
       setProcessingPayment(true);
+      
+      // Kiểm tra nếu không có sản phẩm nào được chọn
+      if (selectedCount === 0) {
+        showToast("Vui lòng chọn ít nhất một sản phẩm để thanh toán", "error");
+        setProcessingPayment(false);
+        return;
+      }
 
-      // Gọi API tạo link thanh toán
+      // Gọi API tạo link thanh toán với số tiền của các sản phẩm đã chọn
       const response = await axios.get("https://onlinepay.onrender.com/create_payment", {
         params: {
-          amount: subTotal,
+          amount: selectedSubTotal, // Sử dụng tổng tiền của sản phẩm đã chọn
           bankCode: "", // Để trống để hiển thị tất cả ngân hàng
           language: "vn",
         },
       });
 
       if (response.data && response.data.paymentUrl) {
+        // Lấy danh sách ID của sản phẩm đã chọn
+        const selectedIds = Object.keys(selectedProducts).filter(
+          id => selectedProducts[id]
+        );
+        
         // Lưu thông tin đơn hàng vào localStorage để sử dụng sau khi thanh toán
         localStorage.setItem(
           "pendingOrder",
@@ -611,6 +623,7 @@ const CartPage = () => {
             paymentMethod: "BANK_TRANSFER",
             receiveMethod: deliveryMethod,
             note: orderNote,
+            selectedProductIds: selectedIds, // Thêm danh sách sản phẩm đã chọn
           })
         );
 
@@ -630,7 +643,19 @@ const CartPage = () => {
     try {
       setProcessingPayment(true);
       
-      // Gọi API ZaloPay thay vì MoMo
+      // Kiểm tra nếu không có sản phẩm nào được chọn
+      if (selectedCount === 0) {
+        showToast("Vui lòng chọn ít nhất một sản phẩm để thanh toán", "error");
+        setProcessingPayment(false);
+        return;
+      }
+      
+      // Lấy danh sách ID của sản phẩm đã chọn
+      const selectedIds = Object.keys(selectedProducts).filter(
+        id => selectedProducts[id]
+      );
+      
+      // Gọi API ZaloPay với số tiền của các sản phẩm đã chọn
       const response = await axios.post("https://onlinepay.onrender.com/zalo/create-order", {
         amount: selectedSubTotal,
       });
@@ -645,7 +670,7 @@ const CartPage = () => {
             paymentMethod: "MOMO", // Vẫn giữ MOMO trong database
             receiveMethod: deliveryMethod,
             note: orderNote,
-            selectedProductIds: Object.keys(selectedProducts).filter(id => selectedProducts[id]),
+            selectedProductIds: selectedIds,
             zpTransToken: response.data.data.zp_trans_token // Lưu token để kiểm tra sau này
           })
         );
@@ -702,15 +727,38 @@ const CartPage = () => {
         id => selectedProducts[id]
       );
       
+      // Hiển thị chi tiết cho debug
+      const selectedItems = products.filter(product => selectedProducts[product.id]);
+      const selectedTotal = selectedItems.reduce((sum, product) => 
+        sum + product.catalogItem.price * product.quantity, 0);
+      
+      console.log("=== DEBUG ĐẶT HÀNG ===");
+      console.log("Sản phẩm đã chọn:", selectedItems.map(p => ({ 
+        id: p.id, 
+        tên: p.catalogItem.name, 
+        giá: p.catalogItem.price,
+        số_lượng: p.quantity,
+        thành_tiền: p.catalogItem.price * p.quantity
+      })));
+      console.log("Tổng tiền sản phẩm đã chọn:", selectedTotal);
+      console.log("ID sản phẩm đã chọn:", selectedIds);
+      
       const orderData = {
         shippingInfoId: deliveryMethod === "DELIVERY" ? selectedAddressId : null,
         paymentMethod: paymentMethod,
         receiveMethod: deliveryMethod,
         note: orderNote,
-        selectedProductIds: selectedIds,
+        selectedProductIds: selectedIds, // Chỉ gửi các sản phẩm đã chọn
       };
       
-      console.log("Thông tin đơn hàng:", orderData);
+      console.log("Thông tin đơn hàng gửi đi:", orderData);
+      
+      // Kiểm tra xem danh sách sản phẩm đã chọn có trống không
+      if (selectedIds.length === 0) {
+        showToast("Vui lòng chọn ít nhất một sản phẩm để đặt hàng", "error");
+        return;
+      }
+      
       const response = await axios.post(
         "https://phone-selling-app-mw21.onrender.com/api/v1/order/customer/create-from-cart",
         orderData,

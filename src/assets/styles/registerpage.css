@@ -191,11 +191,9 @@
 
 .register-btn:hover {
   box-shadow: 0 6px 20px rgba(249, 111, 58, 0.35);
-  transform: translateY(-2px);
 }
 
 .register-btn:active {
-  transform: translateY(0);
   box-shadow: 0 2px 8px rgba(249, 111, 58, 0.25);
 }
 

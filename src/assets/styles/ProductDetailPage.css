@@ -1217,6 +1217,7 @@
 
 .add-to-cart-btn:active {
   background-color: #1a68d3;
+  transform: none;
 }
 
 .add-to-cart-btn:disabled {
@@ -1238,6 +1239,11 @@
 
 .buy-now-btn:hover {
   background-color: #d31000;
+}
+
+.buy-now-btn:active {
+  background-color: #d31000;
+  transform: none;
 }
 
 /* Responsive */

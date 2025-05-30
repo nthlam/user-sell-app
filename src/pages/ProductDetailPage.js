@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import { fetchProductById } from '../redux/slices/productSlice';
+import { fetchPromotionById, setCurrentPromotion, setShowPromotionModal } from '../redux/slices/promotionSlice';
 import '../assets/styles/ProductDetailPage.css';
 
 // Import commitment icons
@@ -20,6 +21,7 @@ const ProductDetailPage = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { currentProduct, loading, error } = useSelector((state) => state.products);
+  const { currentPromotion, loading: loadingPromotion, error: promotionError, showPromotionModal } = useSelector((state) => state.promotions);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('specs');
@@ -97,11 +99,7 @@ const ProductDetailPage = () => {
   // Sold count
   const [soldCount, setSoldCount] = useState(0);
   
-  // State cho modal chi tiết khuyến mãi
-  const [selectedPromotion, setSelectedPromotion] = useState(null);
-  const [showPromotionModal, setShowPromotionModal] = useState(false);
-  const [loadingPromotion, setLoadingPromotion] = useState(false);
-  const [promotionError, setPromotionError] = useState(null);
+  // Đã chuyển state của modal khuyến mãi sang Redux
 
   // Fetch product detail
   useEffect(() => {
@@ -369,45 +367,34 @@ const ProductDetailPage = () => {
   
   // Các hàm xử lý modal chi tiết khuyến mãi
   
-  // Lấy chi tiết khuyến mãi
-  const fetchPromotionDetails = async (promotionId) => {
+  // Lấy chi tiết khuyến mãi (sử dụng Redux)
+  const fetchPromotionDetailsRedux = (promotionId) => {
     if (!promotionId) return;
-    
-    setLoadingPromotion(true);
-    setPromotionError(null);
-    
-    try {
-      const response = await axios.get(`${API_URL}/api/v1/promotion/${promotionId}`);
-      if (response.data && response.data.data) {
-        setSelectedPromotion(response.data.data);
-        setShowPromotionModal(true);
-      }
-    } catch (error) {
-      console.error('Error fetching promotion details:', error);
-      setPromotionError('Không thể tải thông tin khuyến mãi');
-    } finally {
-      setLoadingPromotion(false);
-    }
+    // Sử dụng Redux Thunk để lấy thông tin khuyến mãi
+    dispatch(fetchPromotionById(promotionId));
   };
   
-  // Đóng modal chi tiết khuyến mãi
+  // Đóng modal chi tiết khuyến mãi (sử dụng Redux)
   const closePromotionModal = () => {
-    setShowPromotionModal(false);
+    dispatch(setShowPromotionModal(false));
   };
   
-  // Xử lý click vào khuyến mãi
+  // Xử lý click vào khuyến mãi (sử dụng Redux)
   const handlePromotionClick = (promotion) => {
+    console.log("Promotion clicked:", promotion); // Debugging
+    
+    // Luôn hiển thị modal trước để người dùng biết đang xử lý
+    dispatch(setCurrentPromotion(promotion || {
+      name: promotion?.name || 'Khuyến mãi đặc biệt',
+      value: promotion?.value || 0,
+      startDate: promotion?.startDate || new Date().toISOString(),
+      endDate: promotion?.endDate || new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    }));
+    dispatch(setShowPromotionModal(true));
+    
+    // Nếu có ID, thì gọi API để lấy thông tin chi tiết hơn
     if (promotion && promotion.id) {
-      fetchPromotionDetails(promotion.id);
-    } else {
-      // Hiển thị thông tin khuyến mãi trực tiếp nếu không có ID hoặc không thể gọi API
-      setSelectedPromotion(promotion || {
-        name: 'Khuyến mãi đặc biệt',
-        value: promotion?.value || 0,
-        startDate: new Date().toISOString(),
-        endDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
-      });
-      setShowPromotionModal(true);
+      fetchPromotionDetailsRedux(promotion.id);
     }
   };
 
@@ -919,7 +906,7 @@ const ProductDetailPage = () => {
         </div>
       )}
 
-      {/* Modal hiển thị chi tiết khuyến mãi */}
+      {/* Modal hiển thị chi tiết khuyến mãi (sử dụng Redux) */}
       {showPromotionModal && (
         <div className="promotion-modal-overlay">
           <div className="promotion-modal">
@@ -933,31 +920,31 @@ const ProductDetailPage = () => {
                 <div className="promotion-loading">Đang tải thông tin khuyến mãi...</div>
               ) : promotionError ? (
                 <div className="promotion-error">{promotionError}</div>
-              ) : selectedPromotion ? (
+              ) : currentPromotion ? (
                 <div className="promotion-details">
-                  <div className="promotion-detail-name">{selectedPromotion.name || 'Chương trình khuyến mãi'}</div>
+                  <div className="promotion-detail-name">{currentPromotion.name || 'Chương trình khuyến mãi'}</div>
                   
                   <div className="promotion-detail-value">
                     <span className="detail-label">Giá trị: </span>
-                    <span className="detail-value">{formatCurrency(selectedPromotion.value)}</span>
+                    <span className="detail-value">{formatCurrency(currentPromotion.value)}</span>
                   </div>
                   
-                  {selectedPromotion.category && (
+                  {currentPromotion.category && (
                     <div className="promotion-detail-category">
                       <span className="detail-label">Loại: </span>
-                      <span className="detail-value">{selectedPromotion.category.name || 'Khuyến mãi tiêu chuẩn'}</span>
+                      <span className="detail-value">{currentPromotion.category.name || 'Khuyến mãi tiêu chuẩn'}</span>
                     </div>
                   )}
                   
-                  {selectedPromotion.startDate && selectedPromotion.endDate && (
+                  {currentPromotion.startDate && currentPromotion.endDate && (
                     <div className="promotion-detail-period">
                       <div className="period-dates">
-                        <div><span className="detail-label">Ngày bắt đầu: </span>{new Date(selectedPromotion.startDate).toLocaleDateString('vi-VN')}</div>
-                        <div><span className="detail-label">Ngày kết thúc: </span>{new Date(selectedPromotion.endDate).toLocaleDateString('vi-VN')}</div>
+                        <div><span className="detail-label">Ngày bắt đầu: </span>{new Date(currentPromotion.startDate).toLocaleDateString('vi-VN')}</div>
+                        <div><span className="detail-label">Ngày kết thúc: </span>{new Date(currentPromotion.endDate).toLocaleDateString('vi-VN')}</div>
                       </div>
                       
                       <div className="promotion-status">
-                        {new Date() < new Date(selectedPromotion.endDate) 
+                        {new Date() < new Date(currentPromotion.endDate) 
                           ? <span className="status-active">Đang hoạt động</span>
                           : <span className="status-expired">Đã hết hạn</span>
                         }
@@ -968,8 +955,8 @@ const ProductDetailPage = () => {
                   <div className="promotion-detail-description">
                     <div className="detail-label">Chi tiết: </div>
                     <div className="detail-content">
-                      {selectedPromotion.description || 
-                        `Ưu đãi giảm ${formatCurrency(selectedPromotion.value)} khi mua sản phẩm ${currentProduct.name}. Được áp dụng cho tất cả khách hàng khi mua sản phẩm tại TechShop.`
+                      {currentPromotion.description || 
+                        `Ưu đãi giảm ${formatCurrency(currentPromotion.value)} khi mua sản phẩm ${currentProduct.name}. Được áp dụng cho tất cả khách hàng khi mua sản phẩm tại TechShop.`
                       }
                     </div>
                   </div>
@@ -981,7 +968,7 @@ const ProductDetailPage = () => {
             
             <div className="promotion-modal-footer">
               <button className="close-promotion" onClick={closePromotionModal}>Quay lại</button>
-              {selectedPromotion && (
+              {currentPromotion && (
                 <button className="apply-promotion" onClick={closePromotionModal}>Áp dụng ngay</button>
               )}
             </div>
