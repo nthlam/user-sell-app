@@ -81,16 +81,24 @@ const PaymentResult = () => {
       try {
         // Lấy query params từ URL
         const queryParams = new URLSearchParams(location.search);
+        const vnpResponseCode = queryParams.get('vnp_ResponseCode');
         
         // Kiểm tra kết quả thanh toán
         const response = await axios.get('https://onlinepay.onrender.com/check_payment', {
           params: Object.fromEntries(queryParams)
         });
         
-        setResult(response.data);
+        // VNPay trả về ResponseCode = '00' là thành công
+        const isPaymentSuccessful = vnpResponseCode === '00';
         
-        // Nếu thanh toán thành công, tạo đơn hàng
-        if (response.data.message === "Thanh toán thành công") {
+        setResult({
+          ...response.data,
+          success: isPaymentSuccessful,
+          message: isPaymentSuccessful ? "Thanh toán thành công" : response.data.message
+        });
+        
+        // Nếu thanh toán thành công (vnp_ResponseCode = '00'), tạo đơn hàng
+        if (isPaymentSuccessful) {
           await createOrder();
         }
       } catch (error) {
@@ -108,6 +116,7 @@ const PaymentResult = () => {
       try {
         const token = localStorage.getItem("token");
         const pendingOrderData = JSON.parse(localStorage.getItem("pendingOrder"));
+        const queryParams = new URLSearchParams(location.search);
         
         if (!token || !pendingOrderData) {
           throw new Error("Không tìm thấy thông tin đơn hàng hoặc phiên đăng nhập");
@@ -120,11 +129,32 @@ const PaymentResult = () => {
           receiveMethod: pendingOrderData.receiveMethod,
           note: pendingOrderData.note,
           selectedProductIds: pendingOrderData.selectedProductIds,
-          transaction: {
-            provider: "zalopay",
-            transactionId: pendingOrderData.zpTransToken
-          }
         };
+
+        // Thêm thông tin giao dịch tùy theo phương thức thanh toán
+        if (pendingOrderData.paymentMethod === 'ZALOPAY') {
+          orderData.transaction = {
+            provider: "zalopay",
+            transactionId: pendingOrderData.zpTransToken || ''
+          };
+        } else if (pendingOrderData.paymentMethod === 'VNPAY') {
+          // Lấy thông tin giao dịch từ URL callback của VNPay
+          const vnpResponseCode = queryParams.get('vnp_ResponseCode');
+          const vnpTransactionNo = queryParams.get('vnp_TransactionNo');
+          const vnpTxnRef = queryParams.get('vnp_TxnRef');
+          
+          orderData.transaction = {
+            provider: "vnpay",
+            transactionId: vnpTransactionNo || vnpTxnRef || `VNPAY-${Date.now()}`,
+            responseCode: vnpResponseCode,
+            bankCode: queryParams.get('vnp_BankCode'),
+            amount: queryParams.get('vnp_Amount'),
+            bankTranNo: queryParams.get('vnp_BankTranNo'),
+            cardType: queryParams.get('vnp_CardType'),
+            payDate: queryParams.get('vnp_PayDate'),
+            orderInfo: queryParams.get('vnp_OrderInfo')
+          };
+        }
         
         const response = await axios.post(
           "https://phone-selling-app-mw21.onrender.com/api/v1/order/customer/create-from-cart",
@@ -132,6 +162,7 @@ const PaymentResult = () => {
           {
             headers: {
               Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
             },
           }
         );
@@ -139,9 +170,12 @@ const PaymentResult = () => {
         if (response.data && response.data.data) {
           setOrderCreated(true);
           localStorage.removeItem("pendingOrder"); // Xóa thông tin đơn hàng đã xử lý
+          return true;
         }
+        return false;
       } catch (error) {
         console.error("Lỗi khi tạo đơn hàng:", error);
+        throw error; // Ném lỗi để xử lý ở hàm gọi
       }
     };
     
@@ -177,9 +211,20 @@ const PaymentResult = () => {
           <div className="payment-details">
             {result.data && (
               <>
-                <p>Mã giao dịch: {result.data.zp_trans_id || result.data.app_trans_id}</p>
+                <p>Mã giao dịch: {
+                  // Hiển thị mã giao dịch dựa vào phương thức thanh toán
+                  result.data.zp_trans_id || result.data.app_trans_id || 
+                  new URLSearchParams(location.search).get('vnp_TransactionNo') || 
+                  new URLSearchParams(location.search).get('vnp_TxnRef')
+                }</p>
+                {new URLSearchParams(location.search).get('vnp_BankCode') && (
+                  <p>Ngân hàng: {new URLSearchParams(location.search).get('vnp_BankCode')}</p>
+                )}
                 {orderCreated && <p className="order-created">Đơn hàng của bạn đã được tạo thành công!</p>}
               </>
+            )}
+            {!result.data && orderCreated && (
+              <p className="order-created">Đơn hàng của bạn đã được tạo thành công!</p>
             )}
           </div>
         )}

@@ -15,7 +15,7 @@ const TawkChat = () => {
     window.Tawk_API = window.Tawk_API || {};
     window.Tawk_LoadStart = new Date();
 
-    // Add the script to the document
+    // Add the script to the document 
     s0.parentNode.insertBefore(s1, s0);
 
     // Cleanup function to remove the script when component unmounts

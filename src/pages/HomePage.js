@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchFeaturedProducts, fetchAllProducts, fetchPhoneProducts, fetchSmartwatchProducts, fetchProductsByCategory } from '../redux/slices/productSlice';
 import { Link } from 'react-router-dom';
 import CategoryNav from '../components/CategoryNav';
+import PromotionSection from '../components/PromotionSection';
 import '../assets/styles/HomePage.css';
 
 const HomePage = () => {
@@ -207,6 +208,10 @@ const HomePage = () => {
   return (
     <div className="home-container">
       <CategoryNav />
+      
+      {/* Phần Khuyến Mãi */}
+      <PromotionSection />
+      
       <div className="featured-products">
         <h2>Sản phẩm nổi bật</h2>
         {loadingFeatured ? (

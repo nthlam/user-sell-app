@@ -17,6 +17,7 @@
     "react-responsive-carousel": "^3.2.23",
     "react-router-dom": "^7.4.1",
     "react-scripts": "5.0.1",
+    "react-spinners": "^0.17.0",
     "redux": "^5.0.1",
     "redux-thunk": "^3.1.0",
     "tgaa": "file:",

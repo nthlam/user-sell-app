@@ -399,6 +399,15 @@ const ProductDetailPage = () => {
   const handlePromotionClick = (promotion) => {
     if (promotion && promotion.id) {
       fetchPromotionDetails(promotion.id);
+    } else {
+      // Hiển thị thông tin khuyến mãi trực tiếp nếu không có ID hoặc không thể gọi API
+      setSelectedPromotion(promotion || {
+        name: 'Khuyến mãi đặc biệt',
+        value: promotion?.value || 0,
+        startDate: new Date().toISOString(),
+        endDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      });
+      setShowPromotionModal(true);
     }
   };
 

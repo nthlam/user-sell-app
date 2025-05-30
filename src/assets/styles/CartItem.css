@@ -33,8 +33,8 @@
 
 .product-image {
   position: relative;
-  width: 175px ;
-  height: 150px;
+  width: 175px;
+  height: 160px;
   background-color: #f9f9f9;
   border-radius: 6px;
   padding: 5px;
@@ -42,6 +42,12 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.image-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .product-image img {
