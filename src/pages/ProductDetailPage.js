@@ -5,6 +5,7 @@ import axios from 'axios';
 import { fetchProductById } from '../redux/slices/productSlice';
 import { fetchPromotionById, setCurrentPromotion, setShowPromotionModal } from '../redux/slices/promotionSlice';
 import '../assets/styles/ProductDetailPage.css';
+import { toast } from 'react-toastify';
 
 // Import commitment icons
 import camket1 from '../assets/images/camket1.jpeg';
@@ -22,28 +23,58 @@ const ProductDetailPage = () => {
   const dispatch = useDispatch();
   const { currentProduct, loading, error } = useSelector((state) => state.products);
   const { currentPromotion, loading: loadingPromotion, error: promotionError, showPromotionModal } = useSelector((state) => state.promotions);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState('specs');
+  
+  // Product state
   const [selectedVariant, setSelectedVariant] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [activeTab, setActiveTab] = useState('specs');
   const [variantImages, setVariantImages] = useState([]);
   const [variants, setVariants] = useState([]);
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
   const [variantError, setVariantError] = useState(null);
+  const [promotions, setPromotions] = useState([]);
+  const [loadingPromotions, setLoadingPromotions] = useState(false);
+  
+  // Buy Now state
+  const [showBuyNowModal, setShowBuyNowModal] = useState(false);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState(null);
+  const [shippingAddresses, setShippingAddresses] = useState([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+  const [showOrderSuccessModal, setShowOrderSuccessModal] = useState(false);
+  const [lastOrderId, setLastOrderId] = useState(null);
+  
+  // Order details state
+  const [showOrderDetailsModal, setShowOrderDetailsModal] = useState(false);
+  const [orderDetails, setOrderDetails] = useState(null);
+  const [loadingOrderDetails, setLoadingOrderDetails] = useState(false);
+  const [orderDetailsError, setOrderDetailsError] = useState(null);
+  
+  // Order form state
+  const [orderForm, setOrderForm] = useState({
+    shippingInfoId: '',
+    paymentMethod: 'CASH',
+    receiveMethod: 'DELIVERY',
+    note: ''
+  });
+  
+  // Reviews state
+  const [reviewsMeta, setReviewsMeta] = useState({
+    totalElements: 0,
+    totalPages: 0,
+    currentPage: 1
+  });
   
   // Cart state
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartMessage, setCartMessage] = useState(null);
   const [cartError, setCartError] = useState(null);
   const [showCartModal, setShowCartModal] = useState(false);
+  const [cartLoading, setCartLoading] = useState(false);
   
   // Reviews data
   const [reviews, setReviews] = useState([]);
-  const [reviewsMeta, setReviewsMeta] = useState({
-    totalElements: 0,
-    totalPages: 0,
-    currentPage: 1
-  });
   const [reviewsLoading, setReviewsLoading] = useState(false);
   const [reviewsError, setReviewsError] = useState(null);
   const [reviewFilter, setReviewFilter] = useState(null); // filter by rating (1-5)
@@ -396,6 +427,237 @@ const ProductDetailPage = () => {
     if (promotion && promotion.id) {
       fetchPromotionDetailsRedux(promotion.id);
     }
+  };
+
+  // Fetch user shipping addresses
+  const fetchShippingAddresses = async () => {
+    if (!checkLogin()) return;
+    
+    setLoadingAddresses(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `${API_URL}/api/v1/user/shipping-info`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      if (response.data && response.data.data) {
+        setShippingAddresses(response.data.data);
+        // Set default shipping address if available
+        if (response.data.data.length > 0) {
+          setOrderForm(prev => ({
+            ...prev,
+            shippingInfoId: response.data.data[0].id
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching shipping addresses:', error);
+      setOrderError('Không thể tải địa chỉ giao hàng');
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+  
+  // Handle buy now button click
+  const handleBuyNowClick = () => {
+    if (!selectedVariant) {
+      setCartError('Vui lòng chọn biến thể sản phẩm');
+      return;
+    }
+    
+    // Check if user is logged in
+    if (!checkLogin()) {
+      // Save product info to localStorage to handle after login
+      localStorage.setItem('pendingBuyNow', JSON.stringify({
+        variantId: selectedVariant.id,
+        quantity: quantity
+      }));
+      
+      // Redirect to login page
+      navigate('/login', { state: { returnUrl: `/product/${productId}` } });
+      return;
+    }
+    
+    // Fetch shipping addresses if needed
+    if (shippingAddresses.length === 0) {
+      fetchShippingAddresses();
+    }
+    
+    // Open buy now modal
+    setShowBuyNowModal(true);
+    setOrderError(null);
+  };
+  
+  // Handle order form input change
+  const handleOrderFormChange = (e) => {
+    const { name, value } = e.target;
+    setOrderForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+  
+  // Place order directly from product
+  const placeOrder = async () => {
+    if (!selectedVariant) {
+      setOrderError('Vui lòng chọn biến thể sản phẩm');
+      return;
+    }
+    
+    if (orderForm.receiveMethod === 'DELIVERY' && !orderForm.shippingInfoId) {
+      setOrderError('Vui lòng chọn địa chỉ giao hàng');
+      return;
+    }
+    
+    setOrderLoading(true);
+    setOrderError(null);
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOrderError('Bạn cần đăng nhập để đặt hàng');
+        return;
+      }
+      
+      // Đảm bảo dữ liệu được gửi đi đúng định dạng
+      const orderData = {
+        variantId: parseInt(selectedVariant.id),
+        quantity: parseInt(quantity),
+        shippingInfoId: parseInt(orderForm.shippingInfoId),
+        paymentMethod: orderForm.paymentMethod,
+        receiveMethod: orderForm.receiveMethod,
+        note: orderForm.note || ''
+      };
+      
+      // Hiển thị chi tiết request body trong console log
+      console.group('Thông tin đặt hàng');
+      console.log('URL:', `${API_URL}/api/v1/order/customer/create-from-product`);
+      console.log('Request Headers:', {
+        'Authorization': `Bearer ${token.substring(0, 15)}...`,
+        'Content-Type': 'application/json'
+      });
+      console.log('Biến thể sản phẩm ID:', orderData.variantId, typeof orderData.variantId);
+      console.log('Số lượng:', orderData.quantity, typeof orderData.quantity);
+      console.log('ID địa chỉ giao hàng:', orderData.shippingInfoId, typeof orderData.shippingInfoId);
+      console.log('Phương thức thanh toán:', orderData.paymentMethod);
+      console.log('Phương thức nhận hàng:', orderData.receiveMethod);
+      console.log('Ghi chú:', orderData.note);
+      console.log('Request body đầy đủ:', JSON.stringify(orderData, null, 2));
+      console.groupEnd();
+      
+      const response = await axios.post(
+        `${API_URL}/api/v1/order/customer/create-from-product`,
+        orderData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      // Log response
+      console.group('Phản hồi từ server');
+      console.log('Status:', response.status);
+      console.log('Response data:', response.data);
+      console.groupEnd();
+      
+      if (response.data && response.data.data) {
+        // Lưu order ID và đóng modal đặt hàng
+        setLastOrderId(response.data.data.id);
+        setShowBuyNowModal(false);
+        
+        // Show success toast
+        toast.success('Đặt hàng thành công!');
+        
+        // Hiển thị modal thành công với lựa chọn
+        setShowOrderSuccessModal(true);
+      }
+    } catch (error) {
+      console.error('Error placing order:', error);
+      console.log('Response error:', error.response?.data);
+      setOrderError(error.response?.data?.message || 'Không thể đặt hàng');
+    } finally {
+      setOrderLoading(false);
+    }
+  };
+  
+  // Close buy now modal
+  const closeBuyNowModal = () => {
+    setShowBuyNowModal(false);
+  };
+  
+  // Close success modal
+  const closeSuccessModal = () => {
+    setShowOrderSuccessModal(false);
+  };
+  
+  // Go to cart after order
+  const goToCartAfterOrder = () => {
+    setShowOrderSuccessModal(false);
+    navigate('/cart');
+  };
+  
+  // Continue shopping after order
+  const continueShopping = () => {
+    setShowOrderSuccessModal(false);
+    // Ở lại trang hiện tại hoặc chuyển đến trang danh mục
+    navigate('/');
+  };
+  
+  // View order details
+  const viewOrderDetails = async () => {
+    setShowOrderSuccessModal(false);
+    setShowOrderDetailsModal(true);
+    await fetchOrderDetails(lastOrderId);
+  };
+  
+  // Fetch order details from API
+  const fetchOrderDetails = async (orderId) => {
+    setLoadingOrderDetails(true);
+    setOrderDetailsError(null);
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOrderDetailsError('Bạn cần đăng nhập để xem chi tiết đơn hàng');
+        return;
+      }
+      
+      console.log(`Fetching order details for ID: ${orderId}`);
+      
+      const response = await axios.get(
+        `${API_URL}/api/v1/order/customer/${orderId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      console.log('Order details response:', response.data);
+      
+      if (response.data && response.data.data) {
+        setOrderDetails(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching order details:', error);
+      setOrderDetailsError(error.response?.data?.message || 'Không thể tải chi tiết đơn hàng');
+    } finally {
+      setLoadingOrderDetails(false);
+    }
+  };
+  
+  // Close order details modal
+  const closeOrderDetailsModal = () => {
+    setShowOrderDetailsModal(false);
   };
 
   // Tính giảm giá
@@ -863,7 +1125,7 @@ const ProductDetailPage = () => {
             <button 
               className="buy-now-btn" 
               disabled={!selectedVariant}
-              onClick={addToCart}
+              onClick={handleBuyNowClick}
             >
               Mua ngay
             </button>
@@ -906,6 +1168,271 @@ const ProductDetailPage = () => {
         </div>
       )}
 
+      {/* Modal chi tiết đơn hàng */}
+      {showOrderDetailsModal && (
+        <div className="cart-modal-overlay">
+          <div className="cart-modal order-details-modal">
+            <div className="cart-modal-header">
+              <h3>Chi tiết đơn hàng</h3>
+              <button className="close-modal" onClick={closeOrderDetailsModal}>&times;</button>
+            </div>
+            <div className="cart-modal-body">
+              {loadingOrderDetails ? (
+                <div className="loading-details">
+                  <div className="loading-spinner"></div>
+                  <p>Đang tải thông tin đơn hàng...</p>
+                </div>
+              ) : orderDetailsError ? (
+                <div className="order-error">{orderDetailsError}</div>
+              ) : orderDetails ? (
+                <div className="order-details-content">
+                  <div className="order-info">
+                    <h4>Thông tin đơn hàng #{orderDetails.id}</h4>
+                    <div className="info-row">
+                      <div className="info-label">Ngày đặt:</div>
+                      <div className="info-value">{new Date(orderDetails.createdAt).toLocaleString('vi-VN')}</div>
+                    </div>
+                    <div className="info-row">
+                      <div className="info-label">Trạng thái:</div>
+                      <div className="info-value">
+                        <span className={`status-badge status-${orderDetails.status.toLowerCase()}`}>{orderDetails.status}</span>
+                      </div>
+                    </div>
+                    <div className="info-row">
+                      <div className="info-label">Người nhận:</div>
+                      <div className="info-value">{orderDetails.receiveName}</div>
+                    </div>
+                    <div className="info-row">
+                      <div className="info-label">Số điện thoại:</div>
+                      <div className="info-value">{orderDetails.phone}</div>
+                    </div>
+                    <div className="info-row">
+                      <div className="info-label">Địa chỉ:</div>
+                      <div className="info-value">{orderDetails.address}</div>
+                    </div>
+                    <div className="info-row">
+                      <div className="info-label">Phương thức nhận:</div>
+                      <div className="info-value">{orderDetails.receiveMethod === 'DELIVERY' ? 'Giao hàng' : 'Nhận tại cửa hàng'}</div>
+                    </div>
+                    <div className="info-row">
+                      <div className="info-label">Phương thức thanh toán:</div>
+                      <div className="info-value">
+                        {orderDetails.paymentMethod === 'CASH' ? 'Thanh toán khi nhận hàng' :
+                         orderDetails.paymentMethod === 'BANK_TRANSFER' ? 'Chuyển khoản ngân hàng' :
+                         orderDetails.paymentMethod === 'ZALOPAY' ? 'Thanh toán qua ZaloPay' : 
+                         orderDetails.paymentMethod}
+                      </div>
+                    </div>
+                    {orderDetails.note && (
+                      <div className="info-row">
+                        <div className="info-label">Ghi chú:</div>
+                        <div className="info-value">{orderDetails.note}</div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="order-items">
+                    <h4>Sản phẩm đã đặt</h4>
+                    {orderDetails.orderItems.map((item) => (
+                      <div className="order-item" key={item.id}>
+                        <div className="item-image">
+                          <img 
+                            src={item.image ? renderProductImage(item.image) : 'https://via.placeholder.com/500x500?text=No+Image'} 
+                            alt={item.name} 
+                            className="item-image-content"
+                          />
+                        </div>
+                        <div className="item-details">
+                          <div className="item-name">{item.name}</div>
+                          <div className="item-variant">Phiên bản: {item.color}</div>
+                          <div className="item-price-qty">
+                            <span className="item-price">{item.price.toLocaleString('vi-VN')}đ</span>
+                            <span className="item-qty">Số lượng: {item.quantity}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="order-total">
+                    <div className="total-row summary-row">
+                      <div className="total-label">Tạm tính:</div>
+                      <div className="total-value-regular">{orderDetails.totalPrice.toLocaleString('vi-VN')}đ</div>
+                    </div>
+                    <div className="total-row summary-row">
+                      <div className="total-label">Phí vận chuyển:</div>
+                      <div className="total-value-regular">0đ</div>
+                    </div>
+                    <div className="total-row summary-row">
+                      <div className="total-label">Giảm giá:</div>
+                      <div className="total-value-regular discount-value">0đ</div>
+                    </div>
+                    <div className="total-row main-total">
+                      <div className="total-label">Tổng cộng:</div>
+                      <div className="total-value">{orderDetails.totalPrice.toLocaleString('vi-VN')}đ</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="no-data">Không có thông tin đơn hàng</div>
+              )}
+            </div>
+            <div className="cart-modal-footer">
+              <button className="modal-btn close-btn" onClick={closeOrderDetailsModal}>Đóng</button>
+              <a href="/user/orders" className="modal-btn view-all-orders-btn">Xem tất cả đơn hàng</a>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal thông báo đặt hàng thành công */}
+      {showOrderSuccessModal && (
+        <div className="cart-modal-overlay">
+          <div className="cart-modal success-modal">
+            <div className="cart-modal-header">
+              <h3>Đặt hàng thành công!</h3>
+              <button className="close-modal" onClick={closeSuccessModal}>&times;</button>
+            </div>
+            <div className="cart-modal-body">
+              <div className="success-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#4BB543" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <p className="success-message">Đơn hàng của bạn đã được đặt thành công!</p>
+              <p className="order-id">Mã đơn hàng: {lastOrderId}</p>
+              <p className="order-note">Cảm ơn bạn đã mua sắm tại cửa hàng chúng tôi!</p>
+            </div>
+            <div className="cart-modal-footer success-footer">
+              <button className="continue-shopping" onClick={continueShopping}>Tiếp tục mua sắm</button>
+              <button className="go-to-cart" onClick={goToCartAfterOrder}>Đến giỏ hàng</button>
+              <button className="view-order" onClick={viewOrderDetails}>Xem chi tiết đơn hàng</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal đặt hàng nhanh */}
+      {showBuyNowModal && (
+        <div className="cart-modal-overlay">
+          <div className="cart-modal buy-now-modal">
+            <div className="cart-modal-header">
+              <h3>Đặt hàng nhanh</h3>
+              <button className="close-modal" onClick={closeBuyNowModal}>&times;</button>
+            </div>
+            <div className="cart-modal-body">
+              <div className="product-added-info">
+                <img 
+                  src={selectedVariant && selectedVariant.images && selectedVariant.images.length > 0 
+                    ? renderProductImage(selectedVariant.images[0]) 
+                    : (currentProduct && currentProduct.image ? renderProductImage(currentProduct.image) : '')}
+                  alt={currentProduct.name}
+                  className="cart-product-image"
+                />
+                <div className="cart-product-details">
+                  <div className="cart-product-name">{currentProduct.name}</div>
+                  <div className="cart-variant-info">
+                    Phiên bản: {selectedVariant ? selectedVariant.color : 'Mặc định'}
+                  </div>
+                  <div className="cart-quantity">Số lượng: {quantity}</div>
+                  <div className="cart-price">Giá: {formatCurrency(currentProduct.price * quantity)}</div>
+                </div>
+              </div>
+              
+              {orderError && <div className="order-error">{orderError}</div>}
+              
+              <form className="order-form">
+                {/* Phương thức nhận hàng */}
+                <div className="form-group">
+                  <label>Phương thức nhận hàng:</label>
+                  <select 
+                    name="receiveMethod"
+                    value={orderForm.receiveMethod}
+                    onChange={handleOrderFormChange}
+                    className="form-control"
+                  >
+                    <option value="DELIVERY">Giao hàng tận nơi</option>
+                    <option value="PICKUP">Nhận tại cửa hàng</option>
+                  </select>
+                </div>
+                
+                {/* Địa chỉ giao hàng - chỉ hiển thị khi chọn DELIVERY */}
+                {orderForm.receiveMethod === 'DELIVERY' && (
+                  <div className="form-group">
+                    <label>Địa chỉ giao hàng:</label>
+                    {loadingAddresses ? (
+                      <div className="loading-addresses">Đang tải địa chỉ...</div>
+                    ) : shippingAddresses.length > 0 ? (
+                      <select
+                        name="shippingInfoId"
+                        value={orderForm.shippingInfoId}
+                        onChange={handleOrderFormChange}
+                        className="form-control"
+                      >
+                        {shippingAddresses.map(address => (
+                          <option key={address.id} value={address.id}>
+                            {address.receiveName} - {address.phone} - {address.address}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="no-addresses">
+                        <p>Bạn chưa có địa chỉ giao hàng</p>
+                        <Link to="/user/addresses" className="add-address-link">Thêm địa chỉ mới</Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Phương thức thanh toán */}
+                <div className="form-group">
+                  <label>Phương thức thanh toán:</label>
+                  <select
+                    name="paymentMethod"
+                    value={orderForm.paymentMethod}
+                    onChange={handleOrderFormChange}
+                    className="form-control"
+                  >
+                    <option value="CASH">Thanh toán khi nhận hàng</option>
+                    <option value="BANK_TRANSFER">Chuyển khoản ngân hàng (VNPay)</option>
+                    <option value="ZALOPAY">Thanh toán qua ZaloPay</option>
+                  </select>
+                </div>
+                
+                {/* Ghi chú */}
+                <div className="form-group">
+                  <label>Ghi chú:</label>
+                  <textarea
+                    name="note"
+                    value={orderForm.note}
+                    onChange={handleOrderFormChange}
+                    placeholder="Ghi chú về đơn hàng, ví dụ: thời gian hay chỉ dẫn địa điểm giao hàng chi tiết hơn."
+                    className="form-control"
+                  />
+                </div>
+              </form>
+            </div>
+            <div className="cart-modal-footer">
+              <button 
+                className="continue-shopping" 
+                onClick={closeBuyNowModal}
+                disabled={orderLoading}
+              >
+                Huỷ
+              </button>
+              <button 
+                className="go-to-cart place-order-btn" 
+                onClick={placeOrder}
+                disabled={orderLoading}
+              >
+                {orderLoading ? 'Đang xử lý...' : 'Đặt hàng'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Modal hiển thị chi tiết khuyến mãi (sử dụng Redux) */}
       {showPromotionModal && (
         <div className="promotion-modal-overlay">
