@@ -7,6 +7,79 @@
   font-family: "Roboto", Arial, sans-serif;
 }
 
+/* Skeleton Loading Animations */
+.skeleton {
+  background: #f0f0f0;
+  position: relative;
+  overflow: hidden;
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes pulse {
+  0% {
+    background-color: #f0f0f0;
+  }
+  50% {
+    background-color: #e0e0e0;
+  }
+  100% {
+    background-color: #f0f0f0;
+  }
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0,
+    rgba(255, 255, 255, 0.2) 20%,
+    rgba(255, 255, 255, 0.5) 60%,
+    rgba(255, 255, 255, 0)
+  );
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.product-card.skeleton {
+  padding: 12px;
+  height: 350px;
+  border-radius: 12px;
+}
+
+.product-image-skeleton {
+  width: 100%;
+  height: 200px;
+  border-radius: 8px;
+  background-color: #e0e0e0;
+}
+
+.product-title-skeleton {
+  height: 20px;
+  margin-top: 12px;
+  width: 80%;
+  border-radius: 4px;
+  background-color: #e0e0e0;
+}
+
+.product-price-skeleton {
+  height: 16px;
+  margin-top: 8px;
+  width: 50%;
+  border-radius: 4px;
+  background-color: #e0e0e0;
+}
+
 
 
 /* Featured Products Section */

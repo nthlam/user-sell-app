@@ -1,10 +1,19 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchFeaturedProducts, fetchAllProducts, fetchPhoneProducts, fetchSmartwatchProducts, fetchProductsByCategory } from '../redux/slices/productSlice';
 import { Link } from 'react-router-dom';
 import CategoryNav from '../components/CategoryNav';
 import PromotionSection from '../components/PromotionSection';
 import '../assets/styles/HomePage.css';
+
+// Component hiển thị skeleton loading
+const ProductSkeleton = () => (
+  <div className="product-card skeleton">
+    <div className="product-image-skeleton"></div>
+    <div className="product-title-skeleton"></div>
+    <div className="product-price-skeleton"></div>
+  </div>
+);
 
 const HomePage = () => {
   const dispatch = useDispatch();
@@ -29,20 +38,84 @@ const HomePage = () => {
   const smartwatchAutoPlayRef = useRef(null);
   
   const [productPage, setProductPage] = useState(1);
+  
+  // Refs for intersection observer
+  const featuredSectionRef = useRef(null);
+  const phoneSectionRef = useRef(null);
+  const smartwatchSectionRef = useRef(null);
+  const allProductsSectionRef = useRef(null);
+  
+  // Track if data is already loaded
+  const [featuredLoaded, setFeaturedLoaded] = useState(false);
+  const [phonesLoaded, setPhonesLoaded] = useState(false);
+  const [smartwatchesLoaded, setSmartWatchesLoaded] = useState(false);
+  const [allProductsLoaded, setAllProductsLoaded] = useState(false);
 
-  useEffect(() => {
-    // Gọi 4 API riêng biệt để lấy dữ liệu
-    dispatch(fetchFeaturedProducts());
-    dispatch(fetchPhoneProducts());
-    dispatch(fetchSmartwatchProducts());
+  // Lazy loading with Intersection Observer
+  const createObserver = useCallback((ref, setVisible) => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 } // Trigger when 10% of the element is visible
+    );
     
-    // Fetch products with category filter if available
-    if (currentCategory !== undefined) {
-      dispatch(fetchProductsByCategory({ categoryId: currentCategory, page: productPage }));
-    } else {
-      dispatch(fetchAllProducts(productPage));
+    if (ref.current) {
+      observer.observe(ref.current);
     }
-  }, [dispatch, productPage, currentCategory]);
+    
+    return observer;
+  }, []);
+  
+  // Setup intersection observers for each section
+  useEffect(() => {
+    // Always load featured products immediately for better UX
+    if (!featuredLoaded) {
+      dispatch(fetchFeaturedProducts());
+      setFeaturedLoaded(true);
+    }
+    
+    // Setup observers for other sections
+    const phoneObserver = createObserver(phoneSectionRef, (isVisible) => {
+      if (isVisible && !phonesLoaded) {
+        dispatch(fetchPhoneProducts());
+        setPhonesLoaded(true);
+      }
+    });
+    
+    const smartwatchObserver = createObserver(smartwatchSectionRef, (isVisible) => {
+      if (isVisible && !smartwatchesLoaded) {
+        dispatch(fetchSmartwatchProducts());
+        setSmartWatchesLoaded(true);
+      }
+    });
+    
+    const allProductsObserver = createObserver(allProductsSectionRef, (isVisible) => {
+      if (isVisible && !allProductsLoaded) {
+        if (currentCategory !== undefined) {
+          dispatch(fetchProductsByCategory({ categoryId: currentCategory, page: productPage }));
+        } else {
+          dispatch(fetchAllProducts(productPage));
+        }
+        setAllProductsLoaded(true);
+      }
+    });
+    
+    // Cleanup observers
+    return () => {
+      if (phoneObserver) phoneObserver.disconnect();
+      if (smartwatchObserver) smartwatchObserver.disconnect();
+      if (allProductsObserver) allProductsObserver.disconnect();
+    };
+  }, [dispatch, createObserver, productPage, currentCategory, featuredLoaded, phonesLoaded, smartwatchesLoaded, allProductsLoaded]);
+  
+  // Reset loaded state when page or category changes
+  useEffect(() => {
+    setAllProductsLoaded(false);
+  }, [productPage, currentCategory]);
 
   // Xử lý tự động trượt slider
   useEffect(() => {
@@ -208,89 +281,98 @@ const HomePage = () => {
   return (
     <div className="home-container">
       <CategoryNav />
-      
-      {/* Phần Khuyến Mãi */}
       <PromotionSection />
       
-      <div className="featured-products">
+      {/* Featured Products Section */}
+      <section className="featured-products" ref={featuredSectionRef}>
         <h2>Sản phẩm nổi bật</h2>
         {loadingFeatured ? (
-          <div className="section-loading">Đang tải sản phẩm nổi bật...</div>
-        ) : errorFeatured ? (
-          <div className="section-error">Không thể tải sản phẩm nổi bật</div>
-        ) : (
-          <div className="products-slider" ref={sliderRef}>
-            {featuredProducts.map((product) => (
-            <Link to={`/product/${product.id}`} className="product-card-link" key={product.id}>
-              <div className="product-card">
-                {product.basePrice > product.price && (
-                  <span className="discount-badge">
-                    {calculateDiscount(product.basePrice, product.price)}
-                  </span>
-                )}
-                {/* Thêm nhãn trả chậm nếu có */}
-                <div className="installment-badge">Trả chậm 0%</div>
-                <div className="image-container">
-                  <div className="product-image">
-                    <img src={renderProductImage(product)} alt={product.name} />
-                  </div>
-                </div>
-                <h3>{product.name}</h3>
-                
-                {/* Thông số kỹ thuật */}
-                {/* <div className="product-specs">
-                  <span className="spec-item">Super Retina XDR</span>
-                  <span className="spec-item">6.9"</span>
-                </div> */}
-                
-                <div className="product-prices">
-                  <p className="current-price">{(product.price || 0).toLocaleString('vi-VN')}đ</p>
-                  {product.basePrice > product.price && (
-                    <div className="price-discount-container">
-                      <p className="original-price">{(product.basePrice || 0).toLocaleString('vi-VN')}đ</p>
-                      <span className="discount-percent">-{calculateDiscount(product.basePrice, product.price)?.replace('-', '') || '0%'}</span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Thông tin quà tặng */}
-                <div className="gift-info">Quà 500.000đ</div>
-                
-                <div className="product-rating">
-                  <span className="star filled">★</span>
-                  <span className="rating-value">{product.rating?.toFixed(1) || '0.0'}</span>
-                  <span className="dot-separator">•</span>
-                  <span className="sold-count">Đã bán {product.reviewsCount?.toLocaleString('vi-VN') || 0}</span>
-                </div>
-              </div>
-            </Link>
+          <div className="products-slider">
+            {Array(6).fill().map((_, i) => (
+              <ProductSkeleton key={`featured-skeleton-${i}`} />
             ))}
           </div>
+        ) : errorFeatured ? (
+          <div className="section-error">{errorFeatured}</div>
+        ) : (
+          <>
+            <div className="products-slider" ref={sliderRef}>
+              {featuredProducts.map((product) => (
+                <Link to={`/product/${product.id}`} className="product-card-link" key={product.id}>
+                  <div className="product-card">
+                    {product.basePrice > product.price && (
+                      <span className="discount-badge">
+                        {calculateDiscount(product.basePrice, product.price)}
+                      </span>
+                    )}
+                    {/* Thêm nhãn trả chậm nếu có */}
+                    <div className="installment-badge">Trả chậm 0%</div>
+                    <div className="image-container">
+                      <div className="product-image">
+                        <img src={renderProductImage(product)} alt={product.name} />
+                      </div>
+                    </div>
+                    <h3>{product.name}</h3>
+                    
+                    {/* Thông số kỹ thuật */}
+                    {/* <div className="product-specs">
+                      <span className="spec-item">Super Retina XDR</span>
+                      <span className="spec-item">6.9"</span>
+                    </div> */}
+                    
+                    <div className="product-prices">
+                      <p className="current-price">{(product.price || 0).toLocaleString('vi-VN')}đ</p>
+                      {product.basePrice > product.price && (
+                        <div className="price-discount-container">
+                          <p className="original-price">{(product.basePrice || 0).toLocaleString('vi-VN')}đ</p>
+                          <span className="discount-percent">-{calculateDiscount(product.basePrice, product.price)?.replace('-', '') || '0%'}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Thông tin quà tặng */}
+                    <div className="gift-info">Quà 500.000đ</div>
+                    
+                    <div className="product-rating">
+                      <span className="star filled">★</span>
+                      <span className="rating-value">{product.rating?.toFixed(1) || '0.0'}</span>
+                      <span className="dot-separator">•</span>
+                      <span className="sold-count">Đã bán {product.reviewsCount?.toLocaleString('vi-VN') || 0}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+            
+            <div className="slider-controls">
+              <button className="slider-button prev" onClick={handlePrevSlide}>&lt;</button>
+              <button className="slider-button next" onClick={handleNextSlide}>&gt;</button>
+            </div>
+            
+            <div className="slider-dots">
+              {featuredProducts.slice(0, Math.min(featuredProducts.length - 4, 6)).map((_, index) => (
+                <span 
+                  key={index} 
+                  className={`slider-dot ${currentSlide === index ? 'active' : ''}`}
+                  onClick={() => setCurrentSlide(index)}
+                />
+              ))}
+            </div>
+          </>
         )}
-        
-        <div className="slider-controls">
-          <button className="slider-button prev" onClick={handlePrevSlide}>&lt;</button>
-          <button className="slider-button next" onClick={handleNextSlide}>&gt;</button>
-        </div>
-        
-        <div className="slider-dots">
-          {featuredProducts.slice(0, Math.min(featuredProducts.length - 4, 6)).map((_, index) => (
-            <span 
-              key={index} 
-              className={`slider-dot ${currentSlide === index ? 'active' : ''}`}
-              onClick={() => setCurrentSlide(index)}
-            />
-          ))}
-        </div>
-      </div>
+      </section>
       
       {/* Phone Products Section */}
-      <div className="phone-products-section">
+      <section className="phone-products-section" ref={phoneSectionRef}>
         <h2>Điện thoại nổi bật</h2>
         {loadingPhones ? (
-          <div className="section-loading">Đang tải sản phẩm điện thoại...</div>
+          <div className="products-slider">
+            {Array(6).fill().map((_, i) => (
+              <ProductSkeleton key={`phone-skeleton-${i}`} />
+            ))}
+          </div>
         ) : errorPhones ? (
-          <div className="section-error">Không thể tải sản phẩm điện thoại</div>
+          <div className="section-error">{errorPhones}</div>
         ) : (
           <div className="phone-products-container">
             <div className="products-slider phone-slider" ref={phoneSliderRef}>
@@ -335,19 +417,30 @@ const HomePage = () => {
               ))}
             </div>
             
-            
-            
+            <div className="slider-dots phone-slider-dots">
+              {phoneProducts.slice(0, Math.min(phoneProducts.length - 5, 6)).map((_, index) => (
+                <span 
+                  key={index} 
+                  className={`slider-dot ${currentPhoneSlide === index ? 'active' : ''}`}
+                  onClick={() => setCurrentPhoneSlide(index)}
+                />
+              ))}
+            </div>
           </div>
         )}
-      </div>
+      </section>
       
-      {/* Smartwatch Products Section */}
-      <div className="smartwatch-products-section">
+      {/* Smart Watch Products Section */}
+      <section className="smartwatch-products-section" ref={smartwatchSectionRef}>
         <h2>Đồng hồ thông minh nổi bật</h2>
         {loadingSmartwatch ? (
-          <div className="section-loading">Đang tải sản phẩm đồng hồ thông minh...</div>
+          <div className="products-slider">
+            {Array(6).fill().map((_, i) => (
+              <ProductSkeleton key={`smartwatch-skeleton-${i}`} />
+            ))}
+          </div>
         ) : errorSmartwatch ? (
-          <div className="section-error">Không thể tải sản phẩm đồng hồ thông minh</div>
+          <div className="section-error">{errorSmartwatch}</div>
         ) : (
           <div className="smartwatch-products-container">
             <div className="products-slider smartwatch-slider" ref={smartwatchSliderRef}>
@@ -392,8 +485,6 @@ const HomePage = () => {
               ))}
             </div>
             
-            
-            
             <div className="slider-dots smartwatch-slider-dots">
               {smartwatchProducts.slice(0, Math.min(smartwatchProducts.length - 5, 6)).map((_, index) => (
                 <span 
@@ -405,20 +496,25 @@ const HomePage = () => {
             </div>
           </div>
         )}
-      </div>
+      </section>
       
-      <div className="categories-section">
-        <h2>Tất cả sản phẩm</h2>
+      {/* All Products or Category Products Section */}
+      <section className="categories-section" ref={allProductsSectionRef}>
+        <h2>{currentCategory !== undefined ? "Danh mục sản phẩm" : "Tất cả sản phẩm"}</h2>
         {loadingAll ? (
-          <div className="section-loading">Đang tải danh sách sản phẩm...</div>
+          <div className="products-grid">
+            {Array(12).fill().map((_, i) => (
+              <ProductSkeleton key={`all-products-skeleton-${i}`} />
+            ))}
+          </div>
         ) : errorAll ? (
-          <div className="section-error">Không thể tải danh sách sản phẩm</div>
+          <div className="section-error">{errorAll}</div>
         ) : (
           <>
             <div className="products-grid">
               {allProducts && allProducts.map((product) => (
-              <Link to={`/product/${product.id}`} className="product-card-link" key={product.id}>
-                <div className="product-card">
+                <Link to={`/product/${product.id}`} className="product-card-link" key={product.id}>
+                  <div className="product-card">
                   {product.basePrice > product.price && (
                     <span className="discount-badge">
                       {calculateDiscount(product.basePrice, product.price)}
@@ -484,7 +580,7 @@ const HomePage = () => {
             )}
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 };
