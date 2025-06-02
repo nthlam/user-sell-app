@@ -737,15 +737,15 @@ const ProfilePage = () => {
                   <div className="review-product-info">
                     <div className="review-product-image">
                       <img 
-                        src={selectedProduct.image && selectedProduct.image.base64 
-                          ? `data:image/jpeg;base64,${selectedProduct.image.base64}` 
+                        src={selectedProduct.product && selectedProduct.product.image && selectedProduct.product.image.base64 
+                          ? `data:image/jpeg;base64,${selectedProduct.product.image.base64}` 
                           : 'https://via.placeholder.com/80x80?text=No+Image'} 
-                        alt={selectedProduct.name} 
+                        alt={selectedProduct.product ? selectedProduct.product.name : 'Sản phẩm'} 
                       />
                     </div>
                     <div className="review-product-details">
-                      <h4>{selectedProduct.name}</h4>
-                      <p>{selectedProduct.variant || ''}</p>
+                      <h4>{selectedProduct.product ? selectedProduct.product.name : 'Sản phẩm'}</h4>
+                      <p>{selectedProduct.product?.variant || ''}</p>
                     </div>
                   </div>
                 )}
